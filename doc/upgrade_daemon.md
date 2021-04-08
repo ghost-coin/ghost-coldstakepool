@@ -34,8 +34,8 @@ Output should end (if successful) with lines similar to:
 
 Start the pool/s back up (second line applies if you're running testnet version as well):
 
-    $ sudo systemctl start stakepool_live.service
-    $ sudo systemctl start stakepool_test.service
+    $ sudo systemctl start stakepool_live.service ghostd_live.service
+    $ sudo systemctl start stakepool_test.service ghostd_live.service
 
 Verify if everything is running correctly:
 
