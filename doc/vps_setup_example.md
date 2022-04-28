@@ -190,7 +190,7 @@ $ sudo apt-get update && sudo apt-get install yarn
 Clone & install fancy frontend
 
 ```
-$ git clone https://github.com/akshaynexus/ghost-coldstakepool-front
+$ git clone https://github.com/ghost-coin/ghost-coldstakepool-front
 $ cd ghost-coldstakepool-front
 $ yarn install
 $ yarn run build
