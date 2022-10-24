@@ -61,7 +61,7 @@ GHOSTD = os.getenv('GHOSTD', 'ghostd')
 GHOST_TX = os.getenv('GHOST_TX', 'ghost-tx')
 GHOST_CLI = os.getenv('GHOST_CLI', 'ghost-cli')
 
-GHOST_VERSION = os.getenv('GHOST_VERSION', '0.21.1.10')
+GHOST_VERSION = os.getenv('GHOST_VERSION', '0.22.1.0')
 GHOST_VERSION_TAG = os.getenv('GHOST_VERSION_TAG', '')
 GHOST_ARCH = os.getenv('GHOST_ARCH', 'x86_64-linux-gnu.tar.gz')
 GHOST_REPO = os.getenv('GHOST_REPO', 'ghost-coin')
