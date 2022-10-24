@@ -118,7 +118,7 @@ def extractGhostCore():
     with tarfile.open(packed_path) as ft:
         for b in bins:
             out_path = os.path.join(bin_prefix, b)
-            fi = ft.extractfile('{}-{}/{}'.format('ghost', GHOST_VERSION, b))
+            fi = ft.extractfile('./{}-{}/{}'.format('ghost', GHOST_VERSION, b))
             with open(out_path, 'wb') as fout:
                 fout.write(fi.read())
             fi.close()
