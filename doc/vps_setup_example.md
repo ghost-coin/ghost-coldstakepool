@@ -75,7 +75,7 @@ Pool's public key:
 
 	cat ~/stakepoolDemoLive/stakepool/stakepool.json | grep pooladdress | cut -d '"' -f4
 
-**NOTE**: The pool does not automatically update the core. It is essential to have the latest updates.
+**NOTE**: When there is an update the pool does not automatically update the core. It is essential to have the latest versions. To update:
 
 Download and extract archive with latest ghost-...-x86_64-pc-linux-gnu.tar.gz from [here](https://github.com/ghost-coin/ghost-core/releases/latest).
 
