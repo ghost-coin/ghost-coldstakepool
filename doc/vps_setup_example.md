@@ -85,9 +85,9 @@ Download and extract archive with latest ghost-...-x86_64-pc-linux-gnu.tar.gz fr
 
 Stop services and replace the executables with ones from archive, then start services again:
 
-	sudo systemctl stop ghostd_live.service
-	replace executables in /home/stakepooluser/ghost-binaries/
-	sudo systemctl start ghostd_live.service
+	sudo systemctl stop ghostd_live.service stop stakepool_live.service
+	replace executables with updated ones in /home/stakepooluser/ghost-binaries/
+	sudo systemctl start ghostd_live.service stakepool_live.service
 
 ## 3. Set up webserver (optional)
 
