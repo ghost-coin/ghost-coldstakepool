@@ -1,9 +1,5 @@
 # Stakepool Setup on Ubuntu Bionic
 
-This example should be run as a user named `stakepooluser`. To run as a different user replace all instances of `stakepooluser` with your username both in this guide and in the `.service` files in the config directory; eg:
-
-    sed -i -- 's/stakepooluser/YOURUSERNAME/g' config/*.service
-
 ## 1. Preparation
 
 First login to your VPS, replace `stakepoolvps` with the correct IP address of your server
@@ -12,82 +8,26 @@ First login to your VPS, replace `stakepoolvps` with the correct IP address of y
 
 Update your packages, install all dependencies:
 
-```
-$ sudo apt-get update
-$ sudo apt-get install gnupg wget python3 git nginx tmux python3-zmq python3-pip lynx htop vim
-```
+	sudo apt-get update
+	sudo apt-get install gnupg wget python3 git nginx tmux python3-zmq python3-pip lynx htop
 
 ## 2. Installation
 
-Clone `coldstakepool` git repository and install it:
+Clone the repository and install the prerequisites:
 
-```
-$ git clone https://github.com/ghost-coin/ghost-coldstakepool ghost_stakepool
-$ cd ghost_stakepool
-$ sudo pip3 install .
-```
-
-### Testnet Pool
-
-```
-$ coldstakepool-prepare -datadir=~/stakepoolDemoTest -testnet
-NOTE: Save both recovery phrases:
-Stake wallet recovery phrase: (...)
-Reward wallet recovery phrase: (...)
-Stake address: tpcs1mwk4e0z4ll8p6n6wl0hm8l9slyf2vcgjatzwxh
-Reward address: poiXfkxxB5eeEgvL3MZN1pxPq9Bfwh7tEm
-```
-
-Adjust the startheight parameter to current block count - 101.  Earlier blocks won't be scanned by the pool:
-
-    $ vi ~/stakepoolDemoTest/stakepool/stakepool.json
-
-Add pool owner fee payout obj to the stakepool.json.
-```
-    "poolownerwithdrawal": {
-        "frequency": 720,
-        "address": "...",
-        "reserve": 2,
-        "threshold": 5
-    }
-```
-Copy over `systemd` service files to your system:
-
-```
-$ sudo cp ~/ghost_stakepool/doc/config/*.service /etc/systemd/system
-$ sudo systemctl daemon-reload
-```
-
-Start and enable the services, so they start automatically at system boot:
-
-```
-$ sudo systemctl start ghostd_test.service stakepool_test.service
-$ sudo systemctl enable ghostd_test.service stakepool_test.service
-```
-
-#### Verify all is running
-
-```
-$ sudo tail -f /var/log/syslog
-$ ~/ghost-binaries/ghost-cli -datadir=${HOME}/stakepoolDemoTest getblockchaininfo
-$ lynx localhost:9001
-```
-
+	git clone https://github.com/ghost-coin/ghost-coldstakepool ghost_stakepool
+	cd ghost_stakepool
+	sudo pip3 install .
 
 ### Mainnet Pool
 
-Stop the testnet pool (if running):
+Stop the testnet pool:
 
-    $ sudo systemctl stop ghostd_test.service stakepool_test.service
+	sudo systemctl stop ghostd_test.service stakepool_test.service
 
-```
-$ coldstakepool-prepare -datadir=~/stakepoolDemoLive
-NOTE: Save both the recovery phrases:
-Stake wallet recovery phrase: (...)
-Reward wallet recovery phrase: (...)
-Stake address: pcs14ch7w7ue2q8kadljsl42wehfw8tm99yxsez4kz
-Reward address: PbXgDsRurjpCYXxNryin13h86ufks9zh6o
-```
+	coldstakepool-prepare -datadir=~/stakepoolDemoLive
+
+NOTE: Save both the recovery phrases.
 
 Adjust the startheight parameter to current block count - 101.
 
@@ -216,4 +156,50 @@ Edit the `/etc/nginx/conf.d/nginx_stakepool_production.conf`, uncomment the 4 se
 ```
 $ vi /etc/nginx/conf.d/nginx_stakepool_production.conf
 $ sudo systemctl restart nginx
+```
+
+### Testnet Pool
+
+```
+$ coldstakepool-prepare -datadir=~/stakepoolDemoTest -testnet
+NOTE: Save both recovery phrases:
+Stake wallet recovery phrase: (...)
+Reward wallet recovery phrase: (...)
+Stake address: tpcs1mwk4e0z4ll8p6n6wl0hm8l9slyf2vcgjatzwxh
+Reward address: poiXfkxxB5eeEgvL3MZN1pxPq9Bfwh7tEm
+```
+
+Adjust the startheight parameter to current block count - 101.  Earlier blocks won't be scanned by the pool:
+
+    $ vi ~/stakepoolDemoTest/stakepool/stakepool.json
+
+Add pool owner fee payout obj to the stakepool.json.
+```
+    "poolownerwithdrawal": {
+        "frequency": 720,
+        "address": "...",
+        "reserve": 2,
+        "threshold": 5
+    }
+```
+Copy over `systemd` service files to your system:
+
+```
+$ sudo cp ~/ghost_stakepool/doc/config/*.service /etc/systemd/system
+$ sudo systemctl daemon-reload
+```
+
+Start and enable the services, so they start automatically at system boot:
+
+```
+$ sudo systemctl start ghostd_test.service stakepool_test.service
+$ sudo systemctl enable ghostd_test.service stakepool_test.service
+```
+
+#### Verify all is running
+
+```
+$ sudo tail -f /var/log/syslog
+$ ~/ghost-binaries/ghost-cli -datadir=${HOME}/stakepoolDemoTest getblockchaininfo
+$ lynx localhost:9001
 ```
