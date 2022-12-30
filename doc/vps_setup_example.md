@@ -33,7 +33,7 @@ Prepare a cold staking pool:
 
 	coldstakepool-prepare -datadir=~/stakepoolDemoLive
 
-**NOTE**: Save both the recovery phrases.
+**NOTE**: Save both recovery phrases.
 
 Set the `"startheight"` parameter to the current block count minus 101. Earlier blocks won't be scanned by the pool:
 
@@ -69,9 +69,9 @@ Verify all is running:
 	~/ghost-binaries/ghost-cli -datadir=${HOME}/stakepoolDemoLive getblockchaininfo
 	lynx localhost:9000
 
-At this step, if no errors have occured, the pool is ready to go.
+At this step, if no errors have occured and ghostd is fully synced, the pool is ready to go.
 
-Pool's public key:
+Retrieve pool's public key:
 
 	cat ~/stakepoolDemoLive/stakepool/stakepool.json | grep pooladdress | cut -d '"' -f4
 
