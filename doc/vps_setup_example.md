@@ -39,7 +39,7 @@ Set the `"startheight"` parameter to the current block count minus 101. Earlier 
 
 	nano ~/stakepoolDemoLive/stakepool/stakepool.json
 
-Add pool owner fee payout object to the stakepool.json.
+Add pool owner revenue payout object to the stakepool.json. 
 ```
     "poolownerwithdrawal": {
         "frequency": 720,
@@ -49,7 +49,9 @@ Add pool owner fee payout object to the stakepool.json.
     }
 ```
 **NOTE**: Please verify with JSON validator that object was added correctly.
-Change the address to your public address, frequency is in blocks.
+
+Change the address to your public address, frequency is in blocks. Reserve is the
+amount reserved for fees. Threshold is the minimum required for pool's revenue payout.
 
 Copy over `systemd` service files to your system:
 
@@ -73,8 +75,15 @@ Pool's public key:
 
 	cat ~/stakepoolDemoLive/stakepool/stakepool.json | grep pooladdress | cut -d '"' -f4
 
-**NOTE**: The pool does not automatically update the core. It is essential to have
-the latest updates. To update a pool to the latest core:
+**NOTE**: The pool does not automatically update the core. It is essential to have the latest updates.
+
+Download and extract archive with latest ghost-...-x86_64-pc-linux-gnu.tar.gz from [here](https://github.com/ghost-coin/ghost-core/releases/latest).
+
+	cd ~/ghost-binaries && rm -rf *gz
+	wget replace-this-with-real-link-to-latest.tar.gz-file
+	tar xvf *gz
+
+Stop services and replace the executables with ones from archive, then start services again:
 
 	sudo systemctl stop ghostd_live.service
 	replace executables in /home/stakepooluser/ghost-binaries/
