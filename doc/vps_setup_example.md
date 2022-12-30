@@ -48,7 +48,7 @@ Add pool owner revenue payout object to the stakepool.json.
         "threshold": 5
     }
 ```
-**NOTE**: Please verify with JSON validator that object was added correctly.
+**NOTE**: Please verify stakepool.json contents with JSON validator that object was added correctly.
 
 Change the address to your public address, frequency is in blocks. Reserve is the
 amount reserved for fees. Threshold is the minimum required for pool's revenue payout.
