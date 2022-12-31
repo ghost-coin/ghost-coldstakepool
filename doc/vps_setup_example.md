@@ -9,7 +9,7 @@ First login to your VPS, replace `vps-ip` with the correct IP address of your se
 Update and upgrade the system, install the dependencies:
 
 	apt-get update && sudo apt-get upgrade
-	apt-get install gnupg wget python3 git nginx tmux python3-zmq python3-pip lynx htop nano
+	apt-get install gnupg wget python3 git nginx tmux python3-zmq python3-pip lynx htop nano jq curl
 
 The pool should be ran as a user named `stakepooluser`. 
 Add user `stakepooluser`.
@@ -75,20 +75,18 @@ Retrieve pool's public key:
 
 	cat ~/stakepoolDemoLive/stakepool/stakepool.json | grep pooladdress | cut -d '"' -f4
 
-**NOTE**: When there is an update the pool does not automatically update the core. It is essential to have the latest versions. To update:
+**NOTE**: When there is an update the pool does not automatically update the core. It is essential to have the latest versions.
 
-Download and extract archive with latest ghost-...-x86_64-pc-linux-gnu.tar.gz from [here](https://github.com/ghost-coin/ghost-core/releases/latest).
-
-	cd ~/ghost-binaries && rm -rf *gz
-	wget replace-this-with-real-link-to-latest.tar.gz-file
-	tar xvf *gz
-
-Stop services and replace the executables with ones from archive, then start services again:
+To update, stop services, download latest and replace the old executables then start services again as follows:
 
 	sudo systemctl stop ghostd_live.service stop stakepool_live.service
-	replace executables with updated ones in /home/stakepooluser/ghost-binaries/
+	PV=$(curl -s https://api.github.com/repos/ghost-coin/ghost-core/releases/latest | jq -r '.tag_name' | sed "s/v//")
+	URL=$(curl -s https://api.github.com/repos/ghost-coin/ghost-core/releases/latest | jq -r '.assets[] | .browser_download_url' | grep "x86_64-pc-linux-gnu")
+	cd ~/ghost-binaries && wget $URL
+	tar xvf ghost-${PV}-x86_64-pc-linux-gnu.tar.gz
+	cd ghost-${PV} && mv -v * ..
 	sudo systemctl start ghostd_live.service stakepool_live.service
-
+	
 ## 3. Set up webserver (optional)
 
 	sudo rm /etc/nginx/sites-enabled/default
