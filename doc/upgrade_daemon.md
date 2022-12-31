@@ -23,7 +23,7 @@ Update the coldstakepool code:
 
 Update Ghost Core:
 
-    $ coldstakepool-prepare --update_core
+    $ python3 bin/coldstakepool-prepare.py --update_core
 
 Output should end (if successful) with lines similar to:
 
@@ -57,6 +57,11 @@ In your browser, open `http://stakepoolvpsip:900/json/version`, you should see t
 
     {"core": "18010302", "pool": "0.0.15"}
 
+
+You can check blockheight with: 
+ ```
+ ~/ghost-binaries/ghost-cli -datadir=${HOME}/stakepoolDemoLive getblockcount
+```
 ----
 
 ## Notes
