@@ -79,7 +79,7 @@ Retrieve pool's public key:
 
 To update, stop services, download latest and replace the old executables then start services again as follows:
 
-	sudo systemctl stop ghostd_live.service stop stakepool_live.service
+	sudo systemctl stop ghostd_live.service stakepool_live.service
 	PV=$(curl -s https://api.github.com/repos/ghost-coin/ghost-core/releases/latest | jq -r '.tag_name' | sed "s/v//")
 	URL=$(curl -s https://api.github.com/repos/ghost-coin/ghost-core/releases/latest | jq -r '.assets[] | .browser_download_url' | grep "x86_64-pc-linux-gnu")
 	cd ~/ghost-binaries && wget $URL
