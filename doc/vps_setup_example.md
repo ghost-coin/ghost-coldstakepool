@@ -84,7 +84,7 @@ To update, stop services, download latest and replace the old executables then s
 	URL=$(curl -s https://api.github.com/repos/ghost-coin/ghost-core/releases/latest | jq -r '.assets[] | .browser_download_url' | grep "x86_64-pc-linux-gnu")
 	cd ~/ghost-binaries && wget $URL
 	tar xvf ghost-${PV}-x86_64-pc-linux-gnu.tar.gz
-	mv -v ghost-{PV}/* ~/ghost-binaries
+	cd ghost-${PV} && mv -v * ~/ghost-binaries
 	sudo systemctl start ghostd_live.service stakepool_live.service
 	
 ## 3. Set up webserver (optional)
