@@ -14,7 +14,7 @@ Update and upgrade the system, install the dependencies:
 The pool should be ran as a user named `stakepooluser`. 
 Add user `stakepooluser`.
 
-	useradd stakepooluser
+	useradd --shell /bin/bash --create-home stakepooluser
 	usermod -aG sudo stakepooluser
 	passwd stakepooluser
 	su stakepooluser
