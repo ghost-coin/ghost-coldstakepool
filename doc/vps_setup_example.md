@@ -8,15 +8,14 @@ First login to your VPS, replace `vps-ip` with the correct IP address of your se
 
 Update and upgrade the system, install the dependencies:
 
-	apt-get update && sudo apt-get upgrade
+	apt-get update && apt-get upgrade
 	apt-get install gnupg wget python3 git nginx tmux python3-zmq python3-pip lynx htop nano jq curl
 
 The pool should be ran as a user named `stakepooluser`. 
 Add user `stakepooluser`.
 
-	useradd stakepooluser
+	adduser stakepooluser
 	usermod -aG sudo stakepooluser
-	passwd stakepooluser
 	su stakepooluser
 	
 ## 2. Installation
