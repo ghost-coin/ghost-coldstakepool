@@ -16,6 +16,7 @@ import plyvel
 import struct
 import json
 from functools import wraps
+from binascii import unhexlify
 from . import __version__
 from .util import (
     COIN,
@@ -91,6 +92,8 @@ class StakePool():
 
         self.poolAddr = settings['pooladdress']
         self.poolAddrReward = settings['rewardaddress']
+
+        self.poolAddrBytes = self.getPoolAddrBytes()
 
         self.poolHeight = settings.get('startheight', 0)
 
@@ -189,6 +192,13 @@ class StakePool():
         # Todo: Read rpc port from .conf file
         self.rpc_port = settings.get('rpcport', 51725 if self.chain == 'mainnet' else 51925)
 
+    def getPoolAddrBytes(self):
+        addrInfo = callrpc(self.rpc_port, self.rpc_auth, 'validateaddress', [self.poolAddr, True], 'pool_reward')
+
+        pkh = unhexlify(addrInfo['scriptPubKey']['hex'])[3:-2]
+
+        return pkh
+    
     def start(self):
         logmt(self.fp, 'Starting StakePool at height %d\nPool Address: %s, Reward Address: %s, Mode %s\n' % (self.poolHeight, self.poolAddr, self.poolAddrReward, self.mode))
 
@@ -898,11 +908,14 @@ class StakePool():
                     rv['laststaking'] = int.from_bytes(n[32:40], 'big') / COIN
                 shouldadd = rv['laststaking'] > 0
                 if shouldadd:
-                    utxos = callrpc(self.rpc_port, self.rpc_auth, 'listunspent',
-                                    [1, 9999999, [address_str, ], True, {'include_immature': True}], 'pool_stake')
+                    utxos = callrpc(self.rpc_port, self.rpc_auth, 'getaddressutxos',
+                                    [{"addresses": [addr]}], 'pool_stake')
+
                     totalCoinCurrent = 0
                     for utxo in utxos:
-                        totalCoinCurrent += int(decimal.Decimal(utxo['amount']))
+                        if self.is_cs_out(utxo['script']):
+                            if unhexlify(utxo['script'])[5:-41] == self.poolAddrBytes:
+                                totalCoinCurrent += int(decimal.Decimal(utxo['satoshis'] / COIN))
                     rv['currenttotal'] = totalCoinCurrent
                     addrdata.append(rv)
             # Finally give out data of addrs
@@ -1076,3 +1089,27 @@ class StakePool():
     def getVersions(self):
         return {'pool': __version__,
                 'core': 'Unknown' if self.core_version is None else str(self.core_version)}
+    
+    def is_cs_out(self, scriptPubKey):
+        script_hex = unhexlify(scriptPubKey)
+
+        if (
+            len(script_hex) == 66
+            and script_hex[0] == 0xB8
+            and script_hex[1] == 0x63
+            and script_hex[2] == 0x76
+            and script_hex[3] == 0xA9
+            and script_hex[4] == 0x14
+            and script_hex[25] == 0x88
+            and script_hex[26] == 0xAC
+            and script_hex[27] == 0x67
+            and script_hex[28] == 0x76
+            and script_hex[29] == 0xA8
+            and script_hex[30] == 0x20
+            and script_hex[63] == 0x88
+            and script_hex[64] == 0xAC
+            and script_hex[65] == 0x68
+        ):
+            return True
+        else:
+            return False
