@@ -189,7 +189,7 @@ class StakePool():
 
         # Todo: Read rpc port from .conf file
         self.rpc_port = settings.get('rpcport', 51725 if self.chain == 'mainnet' else 51925)
-        self.poolAddrBytes = self.getPoolAddrBytes()
+        
 
     def getPoolAddrBytes(self):
         addrInfo = callrpc(self.rpc_port, self.rpc_auth, 'validateaddress', [self.poolAddr, True], 'pool_reward')
@@ -210,6 +210,7 @@ class StakePool():
         if self.mode == 'master':
             self.runSanityChecks()
         self.daemon_running = True
+        self.poolAddrBytes = self.getPoolAddrBytes()
 
     def stopRunning(self, with_code=0):
         self.fail_code = with_code
