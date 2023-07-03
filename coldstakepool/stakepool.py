@@ -35,13 +35,13 @@ from .util import (
 DEBUG = True
 CURRENT_DB_VERSION = 1
 
-DBT_DATA = ord('d')
-DBT_BAL = ord('b')
-DBT_POOL_BAL = ord('p')
-DBT_POOL_BLOCK = ord('B')           # Key height : data blockhash + blockreward + poolcointotal
-DBT_POOL_PAYOUT = ord('P')          # Key height + txhash : data totalDisbursed
-DBT_POOL_PENDING_PAYOUT = ord('Q')  # Key txhash : data totalDisbursed + fees
-DBT_POOL_METRICS = ord('M')         # Key Y-m : data nblocks + totalcoin
+DBT_DATA = ord("d")
+DBT_BAL = ord("b")
+DBT_POOL_BAL = ord("p")
+DBT_POOL_BLOCK = ord("B")  # Key height : data blockhash + blockreward + poolcointotal
+DBT_POOL_PAYOUT = ord("P")  # Key height + txhash : data totalDisbursed
+DBT_POOL_PENDING_PAYOUT = ord("Q")  # Key txhash : data totalDisbursed + fees
+DBT_POOL_METRICS = ord("M")  # Key Y-m : data nblocks + totalcoin
 
 
 decimal.getcontext().prec = 8
@@ -56,20 +56,25 @@ def getDBMutex(method):
             return method(self, *method_args, **method_kwargs)
         finally:
             mxDB.release()
+
     return _impl
 
 
 def unpackMonthMetrics(m):
     if m is None:
         return [0, 0, 0]
-    return [struct.unpack('>i', m[:4])[0], int.from_bytes(m[4:20], 'big'), int.from_bytes(m[20:28], 'big')]
+    return [
+        struct.unpack(">i", m[:4])[0],
+        int.from_bytes(m[4:20], "big"),
+        int.from_bytes(m[20:28], "big"),
+    ]
 
 
 def packMonthMetrics(m):
-    return struct.pack('>i', m[0]) + m[1].to_bytes(16, 'big') + m[2].to_bytes(8, 'big')
+    return struct.pack(">i", m[0]) + m[1].to_bytes(16, "big") + m[2].to_bytes(8, "big")
 
 
-class StakePool():
+class StakePool:
     def __init__(self, fp, dataDir, settings, chain):
         self.is_running = True
         self.fail_code = 0
@@ -82,46 +87,52 @@ class StakePool():
 
         self.blockBuffer = 100  # Work n blocks from the tip to avoid forks, should be > COINBASE_MATURITY
 
-        self.mode = settings.get('mode', 'master')
-        self.binDir = os.path.expanduser(settings['ghostbindir'])
-        self.ghostDataDir = os.path.expanduser(settings['ghostdatadir'])
+        self.mode = settings.get("mode", "master")
+        self.binDir = os.path.expanduser(settings["ghostbindir"])
+        self.ghostDataDir = os.path.expanduser(settings["ghostdatadir"])
         self.chain = chain
-        self.debug = settings.get('debug', DEBUG)
+        self.debug = settings.get("debug", DEBUG)
 
-        self.poolAddrHrp = 'gcs' if self.chain == 'mainnet' else 'tpcs'
+        self.poolAddrHrp = "gcs" if self.chain == "mainnet" else "tpcs"
 
-        self.poolAddr = settings['pooladdress']
-        self.poolAddrReward = settings['rewardaddress']
+        self.poolAddr = settings["pooladdress"]
+        self.poolAddrReward = settings["rewardaddress"]
 
         self.poolAddrBytes = self.getPoolAddrBytes()
 
-        self.poolHeight = settings.get('startheight', 0)
+        self.poolHeight = settings.get("startheight", 0)
 
-        self.maxOutputsPerTx = settings.get('maxoutputspertx', 48)
+        self.maxOutputsPerTx = settings.get("maxoutputspertx", 48)
 
         # Default parameters
         self.poolFeePercent = 2
         self.stakeBonusPercent = 5
 
         self.payoutThreshold = int(0.5 * COIN)
-        self.minBlocksBetweenPayments = 100  # Minimum number of blocks between payment runs
+        self.minBlocksBetweenPayments = (
+            100  # Minimum number of blocks between payment runs
+        )
 
-        self.minOutputValue = int(0.1 * COIN)  # Ignore any outputs of lower value when accumulating rewards
+        self.minOutputValue = int(
+            0.1 * COIN
+        )  # Ignore any outputs of lower value when accumulating rewards
         self.tx_fee_per_kb = None
         self.smsg_fee_rate_target = None
 
-        self.dbPath = os.path.join(dataDir, 'stakepooldb')
-        self.addrDirPath = os.path.join(dataDir, 'AddrData')
+        self.dbPath = os.path.join(dataDir, "stakepooldb")
+        self.addrDirPath = os.path.join(dataDir, "AddrData")
         # Create addrdata dir on first run
         if not os.path.exists(self.addrDirPath):
             os.makedirs(self.addrDirPath)
         db = plyvel.DB(self.dbPath, create_if_missing=True)
-        n = db.get(bytes([DBT_DATA]) + b'current_height')
+        n = db.get(bytes([DBT_DATA]) + b"current_height")
         if n is None:
-            logmt(self.fp, 'First run\n')
-            db.put(bytes([DBT_DATA]) + b'db_version', struct.pack('>i', CURRENT_DB_VERSION))
+            logmt(self.fp, "First run\n")
+            db.put(
+                bytes([DBT_DATA]) + b"db_version", struct.pack(">i", CURRENT_DB_VERSION)
+            )
         else:
-            self.poolHeight = struct.unpack('>i', n)[0]
+            self.poolHeight = struct.unpack(">i", n)[0]
 
         self.lastHeightParametersSet = -1
         self.setParameters(self.poolHeight)
@@ -129,22 +140,30 @@ class StakePool():
         self.zmqContext = zmq.Context()
         self.zmqSubscriber = self.zmqContext.socket(zmq.SUB)
 
-        self.zmqSubscriber.connect(self.settings['zmqhost'] + ':' + str(self.settings['zmqport']))
-        self.zmqSubscriber.setsockopt_string(zmq.SUBSCRIBE, 'hashblock')
+        self.zmqSubscriber.connect(
+            self.settings["zmqhost"] + ":" + str(self.settings["zmqport"])
+        )
+        self.zmqSubscriber.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
 
-        self.debugDir = os.path.join(dataDir, 'poolDebug')
+        self.debugDir = os.path.join(dataDir, "poolDebug")
         if self.debug and not os.path.exists(self.debugDir):
             os.makedirs(self.debugDir)
-            with open(os.path.join(self.debugDir, 'pool.csv'), 'a') as fp:
-                fp.write('height,blockReward,blockOutput,poolReward,poolRewardTotal,poolCoinTotal,Disbursed,fees,totalFees\n')
+            with open(os.path.join(self.debugDir, "pool.csv"), "a") as fp:
+                fp.write(
+                    "height,blockReward,blockOutput,poolReward,poolRewardTotal,poolCoinTotal,Disbursed,fees,totalFees\n"
+                )
 
-        if self.mode == 'master':
+        if self.mode == "master":
             try:
-                self.min_blocks_between_withdrawals = self.settings['poolownerwithdrawal']['frequency']
-                assert(self.min_blocks_between_withdrawals > self.blockBuffer)
-                self.owner_withdrawal_addr = self.settings['poolownerwithdrawal']['address']
-                assert(self.settings['poolownerwithdrawal']['reserve'] >= 0.005)
-                assert(self.settings['poolownerwithdrawal']['threshold'] >= 0.0)
+                self.min_blocks_between_withdrawals = self.settings[
+                    "poolownerwithdrawal"
+                ]["frequency"]
+                assert self.min_blocks_between_withdrawals > self.blockBuffer
+                self.owner_withdrawal_addr = self.settings["poolownerwithdrawal"][
+                    "address"
+                ]
+                assert self.settings["poolownerwithdrawal"]["reserve"] >= 0.005
+                assert self.settings["poolownerwithdrawal"]["threshold"] >= 0.0
                 self.have_withdrawal_info = True
             except Exception:
                 traceback.print_exc()
@@ -152,37 +171,48 @@ class StakePool():
 
             # If pool was synced in observer mode 'pool_fees_detected' may be higher than 'pool_fees'
             # 'pool_fees_detected' is tracked at chain tip - buffer, while 'pool_fees' is tracked as the pool makes transactions
-            n = db.get(bytes([DBT_DATA]) + b'pool_fees_detected')
-            pool_fees_detected = 0 if n is None else int.from_bytes(n, 'big')
+            n = db.get(bytes([DBT_DATA]) + b"pool_fees_detected")
+            pool_fees_detected = 0 if n is None else int.from_bytes(n, "big")
 
-            dbkey = bytes([DBT_DATA]) + b'pool_fees'
+            dbkey = bytes([DBT_DATA]) + b"pool_fees"
             n = db.get(dbkey)
-            pool_fees = 0 if n is None else int.from_bytes(n, 'big')
+            pool_fees = 0 if n is None else int.from_bytes(n, "big")
 
             if pool_fees_detected > pool_fees:
-                logmt(self.fp, 'Replacing pool_fees with pool_fees_detected: %s, %s' % (format8(pool_fees), format8(pool_fees_detected)))
-                db.put(dbkey, pool_fees_detected.to_bytes(8, 'big'))
+                logmt(
+                    self.fp,
+                    "Replacing pool_fees with pool_fees_detected: %s, %s"
+                    % (format8(pool_fees), format8(pool_fees_detected)),
+                )
+                db.put(dbkey, pool_fees_detected.to_bytes(8, "big"))
         else:
             self.have_withdrawal_info = False
 
-        addr = db.get(bytes([DBT_DATA]) + b'pool_addr')
+        addr = db.get(bytes([DBT_DATA]) + b"pool_addr")
         if addr is not None:
             self.poolAddr = bech32Encode(self.poolAddrHrp, addr)
         else:
-            db.put(bytes([DBT_DATA]) + b'pool_addr', bech32Decode(self.poolAddrHrp, self.poolAddr))
+            db.put(
+                bytes([DBT_DATA]) + b"pool_addr",
+                bech32Decode(self.poolAddrHrp, self.poolAddr),
+            )
 
-        addr = db.get(bytes([DBT_DATA]) + b'reward_addr')
+        addr = db.get(bytes([DBT_DATA]) + b"reward_addr")
         if addr is not None:
             self.poolAddrReward = encodeAddress(addr)
         else:
-            db.put(bytes([DBT_DATA]) + b'reward_addr', decodeAddress(self.poolAddrReward))
+            db.put(
+                bytes([DBT_DATA]) + b"reward_addr", decodeAddress(self.poolAddrReward)
+            )
 
-        n = db.get(bytes([DBT_DATA]) + b'db_version')
-        self.db_version = 0 if n is None else struct.unpack('>i', n)[0]
+        n = db.get(bytes([DBT_DATA]) + b"db_version")
+        self.db_version = 0 if n is None else struct.unpack(">i", n)[0]
         db.close()
 
         # Wait for daemon to start
-        authcookiepath = os.path.join(self.ghostDataDir, '' if self.chain == 'mainnet' else self.chain, '.cookie')
+        authcookiepath = os.path.join(
+            self.ghostDataDir, "" if self.chain == "mainnet" else self.chain, ".cookie"
+        )
         for i in range(10):
             if not os.path.exists(authcookiepath):
                 time.sleep(0.5)
@@ -190,25 +220,39 @@ class StakePool():
             self.rpc_auth = fp.read()
 
         # Todo: Read rpc port from .conf file
-        self.rpc_port = settings.get('rpcport', 51725 if self.chain == 'mainnet' else 51925)
+        self.rpc_port = settings.get(
+            "rpcport", 51725 if self.chain == "mainnet" else 51925
+        )
 
     def getPoolAddrBytes(self):
-        addrInfo = callrpc(self.rpc_port, self.rpc_auth, 'validateaddress', [self.poolAddr, True], 'pool_reward')
+        addrInfo = callrpc(
+            self.rpc_port,
+            self.rpc_auth,
+            "validateaddress",
+            [self.poolAddr, True],
+            "pool_reward",
+        )
 
-        pkh = unhexlify(addrInfo['scriptPubKey']['hex'])[3:-2]
+        pkh = unhexlify(addrInfo["scriptPubKey"]["hex"])[3:-2]
 
         return pkh
-    
+
     def start(self):
-        logmt(self.fp, 'Starting StakePool at height %d\nPool Address: %s, Reward Address: %s, Mode %s\n' % (self.poolHeight, self.poolAddr, self.poolAddrReward, self.mode))
+        logmt(
+            self.fp,
+            "Starting StakePool at height %d\nPool Address: %s, Reward Address: %s, Mode %s\n"
+            % (self.poolHeight, self.poolAddr, self.poolAddrReward, self.mode),
+        )
 
         self.upgradeDatabase(self.db_version)
         self.waitForDaemonRPC()
 
-        self.core_version = callrpc(self.rpc_port, self.rpc_auth, 'getnetworkinfo')['version']
-        logmt(self.fp, 'Ghost Core version %s\n' % (self.core_version))
+        self.core_version = callrpc(self.rpc_port, self.rpc_auth, "getnetworkinfo")[
+            "version"
+        ]
+        logmt(self.fp, "Ghost Core version %s\n" % (self.core_version))
 
-        if self.mode == 'master':
+        if self.mode == "master":
             self.runSanityChecks()
         self.daemon_running = True
 
@@ -217,109 +261,169 @@ class StakePool():
         self.is_running = False
 
     def setParameters(self, height):
-        if 'parameters' in self.settings:
+        if "parameters" in self.settings:
             if self.lastHeightParametersSet < 0:
                 # Sort by height ascending
-                self.settings['parameters'].sort(key=lambda x: x['height'])
+                self.settings["parameters"].sort(key=lambda x: x["height"])
 
-            for p in self.settings['parameters']:
-                if p['height'] <= self.lastHeightParametersSet:
+            for p in self.settings["parameters"]:
+                if p["height"] <= self.lastHeightParametersSet:
                     continue
-                if p['height'] > height:
+                if p["height"] > height:
                     break
 
-                logmt(self.fp, 'Set parameters at height %d %s' % (height, dumpj(p)))
+                logmt(self.fp, "Set parameters at height %d %s" % (height, dumpj(p)))
 
-                if 'poolfeepercent' in p:
-                    self.poolFeePercent = p['poolfeepercent']
-                if 'stakebonuspercent' in p:
-                    self.stakeBonusPercent = p['stakebonuspercent']
-                if 'payoutthreshold' in p:
-                    self.payoutThreshold = int(p['payoutthreshold'] * COIN)
-                if 'minblocksbetweenpayments' in p:
-                    self.minBlocksBetweenPayments = p['minblocksbetweenpayments']
-                if 'minoutputvalue' in p:
-                    self.minOutputValue = int(p['minoutputvalue'] * COIN)
-                if 'txfeerate' in p:
-                    self.tx_fee_per_kb = p['txfeerate']
-                self.smsg_fee_rate_target = p.get('smsgfeeratetarget', None)
+                if "poolfeepercent" in p:
+                    self.poolFeePercent = p["poolfeepercent"]
+                if "stakebonuspercent" in p:
+                    self.stakeBonusPercent = p["stakebonuspercent"]
+                if "payoutthreshold" in p:
+                    self.payoutThreshold = int(p["payoutthreshold"] * COIN)
+                if "minblocksbetweenpayments" in p:
+                    self.minBlocksBetweenPayments = p["minblocksbetweenpayments"]
+                if "minoutputvalue" in p:
+                    self.minOutputValue = int(p["minoutputvalue"] * COIN)
+                if "txfeerate" in p:
+                    self.tx_fee_per_kb = p["txfeerate"]
+                self.smsg_fee_rate_target = p.get("smsgfeeratetarget", None)
 
-                if self.mode == 'master' and self.daemon_running:
+                if self.mode == "master" and self.daemon_running:
                     self.runSanityChecks()
 
-                self.lastHeightParametersSet = p['height']
+                self.lastHeightParametersSet = p["height"]
 
     def waitForDaemonRPC(self):
         for i in range(20):
             if not self.is_running:
                 return
             try:
-                callrpc(self.rpc_port, self.rpc_auth, 'walletsettings', ['stakingoptions'], 'pool_stake')
+                callrpc(
+                    self.rpc_port,
+                    self.rpc_auth,
+                    "walletsettings",
+                    ["stakingoptions"],
+                    "pool_stake",
+                )
                 return
             except Exception as ex:
                 traceback.print_exc()
-                logmt(self.fp, 'Can\'t connect to daemon RPC, trying again in %d second/s.' % (1 + i))
+                logmt(
+                    self.fp,
+                    "Can't connect to daemon RPC, trying again in %d second/s."
+                    % (1 + i),
+                )
                 time.sleep(1 + i)
-        logmt(self.fp, 'Can\'t connect to daemon RPC, exiting.')
+        logmt(self.fp, "Can't connect to daemon RPC, exiting.")
         self.stopRunning(1)  # Exit with error so systemd will try restart stakepool
 
     def runSanityChecks(self):
         try:
-            r = callrpc(self.rpc_port, self.rpc_auth, 'walletsettings', ['stakingoptions'], 'pool_stake')
-            options = r['stakingoptions']
+            r = callrpc(
+                self.rpc_port,
+                self.rpc_auth,
+                "walletsettings",
+                ["stakingoptions"],
+                "pool_stake",
+            )
+            options = r["stakingoptions"]
             reset_stakingoptions = False
             if not isinstance(options, dict):
                 options = dict()
-            if options.get('rewardaddress', None) != self.poolAddrReward:
-                logmt(self.fp, 'Warning: Incorrect reward address, updating to {}'.format(self.poolAddrReward))
+            if options.get("rewardaddress", None) != self.poolAddrReward:
+                logmt(
+                    self.fp,
+                    "Warning: Incorrect reward address, updating to {}".format(
+                        self.poolAddrReward
+                    ),
+                )
                 reset_stakingoptions = True
-            if options.get('smsgfeeratetarget', None) != self.smsg_fee_rate_target:
-                logmt(self.fp, 'Warning: Incorrect smsg fee rate target, updating to {}'.format(self.smsg_fee_rate_target))
+            if options.get("smsgfeeratetarget", None) != self.smsg_fee_rate_target:
+                logmt(
+                    self.fp,
+                    "Warning: Incorrect smsg fee rate target, updating to {}".format(
+                        self.smsg_fee_rate_target
+                    ),
+                )
                 reset_stakingoptions = True
 
             if reset_stakingoptions:
-                options['rewardaddress'] = self.poolAddrReward
+                options["rewardaddress"] = self.poolAddrReward
                 if self.smsg_fee_rate_target is not None:
-                    options['smsgfeeratetarget'] = self.smsg_fee_rate_target
+                    options["smsgfeeratetarget"] = self.smsg_fee_rate_target
                 else:
-                    options.pop('smsgfeeratetarget', None)
-                callrpc(self.rpc_port, self.rpc_auth, 'walletsettings', ['stakingoptions', options], 'pool_stake')
+                    options.pop("smsgfeeratetarget", None)
+                callrpc(
+                    self.rpc_port,
+                    self.rpc_auth,
+                    "walletsettings",
+                    ["stakingoptions", options],
+                    "pool_stake",
+                )
 
         except Exception:
-            logmt(self.fp, 'Warning: \'pool_stake\' wallet reward address isn\'t set!')
+            logmt(self.fp, "Warning: 'pool_stake' wallet reward address isn't set!")
 
         try:
-            r = callrpc(self.rpc_port, self.rpc_auth, 'walletsettings', ['stakingoptions'], 'pool_reward')
-            if r['stakingoptions']['enabled'] is not False:
-                if r['stakingoptions']['enabled'].lower() != 'false':
-                    logmt(self.fp, 'Warning: Staking is not disabled on the \'pool_reward\' wallet!')
+            r = callrpc(
+                self.rpc_port,
+                self.rpc_auth,
+                "walletsettings",
+                ["stakingoptions"],
+                "pool_reward",
+            )
+            if r["stakingoptions"]["enabled"] is not False:
+                if r["stakingoptions"]["enabled"].lower() != "false":
+                    logmt(
+                        self.fp,
+                        "Warning: Staking is not disabled on the 'pool_reward' wallet!",
+                    )
         except Exception:
-            logmt(self.fp, 'Warning: Staking is not disabled on the \'pool_reward\' wallet!')
+            logmt(
+                self.fp, "Warning: Staking is not disabled on the 'pool_reward' wallet!"
+            )
 
         if self.have_withdrawal_info:
             try:
-                r = callrpc(self.rpc_port, self.rpc_auth, 'validateaddress', [self.owner_withdrawal_addr])
-                assert(r['isvalid'] is True)
+                r = callrpc(
+                    self.rpc_port,
+                    self.rpc_auth,
+                    "validateaddress",
+                    [self.owner_withdrawal_addr],
+                )
+                assert r["isvalid"] is True
             except Exception:
                 self.have_withdrawal_info = False
-                logmt(self.fp, 'Warning: Invalid \'owner_withdrawal_addr\'.')
+                logmt(self.fp, "Warning: Invalid 'owner_withdrawal_addr'.")
 
         if self.have_withdrawal_info:
-            logmt(self.fp, 'Withdraw pool rewards to address: %s.\nMin blocks between withdrawals:%d' % (self.owner_withdrawal_addr, self.min_blocks_between_withdrawals))
+            logmt(
+                self.fp,
+                "Withdraw pool rewards to address: %s.\nMin blocks between withdrawals:%d"
+                % (self.owner_withdrawal_addr, self.min_blocks_between_withdrawals),
+            )
         else:
-            logmt(self.fp, 'Withdraw pool rewards to address: Disabled.')
+            logmt(self.fp, "Withdraw pool rewards to address: Disabled.")
 
     def upgradeDatabase(self, db_version):
         if db_version >= CURRENT_DB_VERSION:
             return
 
-        logmt(self.fp, 'Upgrading Database from version %d to %d.' % (db_version, CURRENT_DB_VERSION))
+        logmt(
+            self.fp,
+            "Upgrading Database from version %d to %d."
+            % (db_version, CURRENT_DB_VERSION),
+        )
 
         rv = self.rebuildMetrics()
-        logmt(self.fp, 'rebuildMetrics processed %d blocks and %d payments.' % (rv['processedblocks'], rv['processedpayments']))
+        logmt(
+            self.fp,
+            "rebuildMetrics processed %d blocks and %d payments."
+            % (rv["processedblocks"], rv["processedpayments"]),
+        )
 
         db = plyvel.DB(self.dbPath, create_if_missing=True)
-        db.put(bytes([DBT_DATA]) + b'db_version', struct.pack('>i', CURRENT_DB_VERSION))
+        db.put(bytes([DBT_DATA]) + b"db_version", struct.pack(">i", CURRENT_DB_VERSION))
         db.close()
 
     def getBatched(self, key, db, batch_mirror):
@@ -333,53 +437,69 @@ class StakePool():
         batch_mirror[key] = value
 
     def writeToJSONFile(self, fileName, data):
-        filePathNameWExt = self.addrDirPath + '/' + fileName + '.json'
-        with open(filePathNameWExt, 'w') as fp:
+        filePathNameWExt = self.addrDirPath + "/" + fileName + ".json"
+        with open(filePathNameWExt, "w") as fp:
             json.dump(data, fp)
 
     @getDBMutex
     def processBlock(self, height):
-        logmt(self.fp, 'processBlock height %d' % (height))
+        logmt(self.fp, "processBlock height %d" % (height))
 
-        reward = callrpc(self.rpc_port, self.rpc_auth, 'getblockreward', [height, ])
+        reward = callrpc(
+            self.rpc_port,
+            self.rpc_auth,
+            "getblockreward",
+            [
+                height,
+            ],
+        )
 
         db = plyvel.DB(self.dbPath, create_if_missing=True)
 
-        n = db.get(bytes([DBT_DATA]) + b'current_height')
+        n = db.get(bytes([DBT_DATA]) + b"current_height")
         if n is not None:
-            poolDBHeight = struct.unpack('>i', n)[0]
+            poolDBHeight = struct.unpack(">i", n)[0]
             if poolDBHeight >= height:
-                logmt(self.fp, 'Block %d already processed, pooldb height %d' % (height, poolDBHeight))
+                logmt(
+                    self.fp,
+                    "Block %d already processed, pooldb height %d"
+                    % (height, poolDBHeight),
+                )
                 self.poolHeight = poolDBHeight
                 db.close()
                 return
 
         self.setParameters(height)
 
-        if 'coinstake' not in reward:
+        if "coinstake" not in reward:
             # logm('No coinstake txn found in block ' + str(height))
-            db.put(bytes([DBT_DATA]) + b'current_height', struct.pack('>i', height))
+            db.put(bytes([DBT_DATA]) + b"current_height", struct.pack(">i", height))
             db.close()
             self.poolHeight = height
             return
 
         batchBalances = dict()
         b = db.write_batch(transaction=True)
-        b.put(bytes([DBT_DATA]) + b'current_height', struct.pack('>i', height))
+        b.put(bytes([DBT_DATA]) + b"current_height", struct.pack(">i", height))
 
-        self.findPayments(height, reward['coinstake'], db, b, batchBalances)
+        self.findPayments(height, reward["coinstake"], db, b, batchBalances)
 
-        for out in reward['outputs']:
+        for out in reward["outputs"]:
             try:
-                if self.poolAddrReward == out['script']['spendaddr']:
-                    if out['value'] != reward['blockreward']:
-                        logmt(self.fp, 'WARNING: Pool reward mismatch at height %d\n' % (height))
+                if self.poolAddrReward == out["script"]["spendaddr"]:
+                    if out["value"] != reward["blockreward"]:
+                        logmt(
+                            self.fp,
+                            "WARNING: Pool reward mismatch at height %d\n" % (height),
+                        )
                     try:
                         self.processPoolBlock(height, reward, db, b, batchBalances)
                     except Exception:
                         exc_type, exc_value, exc_tb = sys.exc_info()
                         traceback.print_exception(exc_type, exc_value, exc_tb)
-                        traceback.print_exception(exc_type, exc_value, exc_tb, file=self.fp)
+                        traceback.print_exception(
+                            exc_type, exc_value, exc_tb, file=self.fp
+                        )
                         self.fp.flush()
                     break
             except Exception:
@@ -387,76 +507,94 @@ class StakePool():
 
         b.write()
 
-        n = db.get(bytes([DBT_DATA]) + b'last_payment_run')
-        lastPaymentRunHeight = 0 if n is None else struct.unpack('>i', n)[0]
+        n = db.get(bytes([DBT_DATA]) + b"last_payment_run")
+        lastPaymentRunHeight = 0 if n is None else struct.unpack(">i", n)[0]
         if lastPaymentRunHeight + self.minBlocksBetweenPayments <= height:
             with db.write_batch(transaction=True) as b:
                 self.processPayments(height, db, b)
 
         if self.have_withdrawal_info:
-            n = db.get(bytes([DBT_DATA]) + b'last_withdrawal_run')
-            last_withdrawal_run = 0 if n is None else struct.unpack('>i', n)[0]
+            n = db.get(bytes([DBT_DATA]) + b"last_withdrawal_run")
+            last_withdrawal_run = 0 if n is None else struct.unpack(">i", n)[0]
             if last_withdrawal_run + self.min_blocks_between_withdrawals <= height:
                 with db.write_batch(transaction=True) as b:
                     self.processPoolRewardWithdrawal(height, db, b)
 
-        logmt(self.fp, 'Starting address list summary')
+        logmt(self.fp, "Starting address list summary")
         rewarddata = self.getAddressListSummary(False, db)
-        self.writeToJSONFile('rewarddata', rewarddata)
+        self.writeToJSONFile("rewarddata", rewarddata)
         db.close()
         self.poolHeight = height
 
     def processPoolBlock(self, height, reward, db, b, batchBalances):
-        logmt(self.fp, 'Found block at ' + str(height))
-        opts = {'mature_only': True, 'all_staked': True}
-        outputs = callrpc(self.rpc_port, self.rpc_auth, 'listcoldstakeunspent', [self.poolAddr, height - 1, opts])
+        logmt(self.fp, "Found block at " + str(height))
+        opts = {"mature_only": True, "all_staked": True}
+        outputs = callrpc(
+            self.rpc_port,
+            self.rpc_auth,
+            "listcoldstakeunspent",
+            [self.poolAddr, height - 1, opts],
+        )
 
         totals = dict()
         poolCoinTotal = 0
         lowValueOutputs = 0
         for o in outputs:
-            v = o['value']
+            v = o["value"]
             if v < self.minOutputValue:
                 lowValueOutputs += 1
                 continue
 
-            if o['addrspend'] in totals:
-                totals[o['addrspend']] += v
+            if o["addrspend"] in totals:
+                totals[o["addrspend"]] += v
             else:
-                totals[o['addrspend']] = v
+                totals[o["addrspend"]] = v
             poolCoinTotal += v
 
         if lowValueOutputs > 0 and self.debug:
-            logmt(self.fp, 'Ignoring %d low value outputs at height %d' % (lowValueOutputs, height))
+            logmt(
+                self.fp,
+                "Ignoring %d low value outputs at height %d"
+                % (lowValueOutputs, height),
+            )
 
-        blockReward = int(decimal.Decimal(reward['blockreward']) * COIN)
+        blockReward = int(decimal.Decimal(reward["blockreward"]) * COIN)
 
         # Coin paid to the pool operator
         poolReward = int((blockReward * (self.poolFeePercent * (COIN // 100))) // COIN)
 
         stakeBonus = 0
         if self.stakeBonusPercent > 0:
-            stakeBonus = int((blockReward * (self.stakeBonusPercent * (COIN // 100))) // COIN)
+            stakeBonus = int(
+                (blockReward * (self.stakeBonusPercent * (COIN // 100))) // COIN
+            )
 
         # Coin paid to the pool participants
         poolRewardClients = int(blockReward - (poolReward + stakeBonus))
 
-        b.put(bytes([DBT_DATA]) + b'current_height', struct.pack('>i', height))
-        b.put(bytes([DBT_POOL_BLOCK]) + struct.pack('>i', height), bytes.fromhex(reward['blockhash']) + blockReward.to_bytes(8, 'big') + poolCoinTotal.to_bytes(8, 'big'))
+        b.put(bytes([DBT_DATA]) + b"current_height", struct.pack(">i", height))
+        b.put(
+            bytes([DBT_POOL_BLOCK]) + struct.pack(">i", height),
+            bytes.fromhex(reward["blockhash"])
+            + blockReward.to_bytes(8, "big")
+            + poolCoinTotal.to_bytes(8, "big"),
+        )
 
-        dbkey = bytes([DBT_DATA]) + b'blocks_found'
+        dbkey = bytes([DBT_DATA]) + b"blocks_found"
         n = db.get(dbkey)
-        blocksFound = 1 if n is None else struct.unpack('>i', n)[0] + 1
-        b.put(dbkey, struct.pack('>i', blocksFound))
+        blocksFound = 1 if n is None else struct.unpack(">i", n)[0] + 1
+        b.put(dbkey, struct.pack(">i", blocksFound))
 
-        if 'blocktime' in reward:
-            date = dt.datetime.fromtimestamp(int(reward['blocktime'])).strftime('%Y-%m')
+        if "blocktime" in reward:
+            date = dt.datetime.fromtimestamp(int(reward["blocktime"])).strftime("%Y-%m")
         else:
             # TODO: Remove
-            blockinfo = callrpc(self.rpc_port, self.rpc_auth, 'getblockheader', [reward['blockhash']])
-            date = dt.datetime.fromtimestamp(int(blockinfo['time'])).strftime('%Y-%m')
+            blockinfo = callrpc(
+                self.rpc_port, self.rpc_auth, "getblockheader", [reward["blockhash"]]
+            )
+            date = dt.datetime.fromtimestamp(int(blockinfo["time"])).strftime("%Y-%m")
 
-        dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, 'UTF-8')
+        dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, "UTF-8")
         month_metrics = unpackMonthMetrics(db.get(dbkey))
         month_metrics[0] += 1
         month_metrics[1] += poolCoinTotal
@@ -464,12 +602,11 @@ class StakePool():
 
         poolRewardClients = int(poolRewardClients)
         for k, v in totals.items():
-
             addrReward = int((poolRewardClients * COIN * v) // (poolCoinTotal))
             addrTotal = addrReward
 
             assignedStakeBonus = 0
-            if stakeBonus > 0 and k == reward['kernelscript']['spendaddr']:
+            if stakeBonus > 0 and k == reward["kernelscript"]["spendaddr"]:
                 # if self.debug:
                 #    logm(self.fp, 'Assigning stake bonus to %s %s\n' % (k, format8(stakeBonus)))
                 addrTotal += int(stakeBonus * COIN)
@@ -479,205 +616,291 @@ class StakePool():
             dbkey = bytes([DBT_BAL]) + decodeAddress(k)
             n = self.getBatched(dbkey, db, batchBalances)
             if n is not None:
-                addrTotal += int.from_bytes(n[:16], 'big')
-                self.setBatched(dbkey, addrTotal.to_bytes(16, 'big') + n[16:32] + v.to_bytes(8, 'big'), b, batchBalances)
+                addrTotal += int.from_bytes(n[:16], "big")
+                self.setBatched(
+                    dbkey,
+                    addrTotal.to_bytes(16, "big") + n[16:32] + v.to_bytes(8, "big"),
+                    b,
+                    batchBalances,
+                )
             else:
                 addrPending = 0
                 addrPaidout = 0
-                self.setBatched(dbkey, addrTotal.to_bytes(16, 'big') + addrPending.to_bytes(8, 'big') + addrPaidout.to_bytes(8, 'big') + v.to_bytes(8, 'big'), b, batchBalances)
+                self.setBatched(
+                    dbkey,
+                    addrTotal.to_bytes(16, "big")
+                    + addrPending.to_bytes(8, "big")
+                    + addrPaidout.to_bytes(8, "big")
+                    + v.to_bytes(8, "big"),
+                    b,
+                    batchBalances,
+                )
 
             if self.debug:
-                with open(os.path.join(self.debugDir, k + '.csv'), 'a') as fp:
-                    fp.write('%d,%s,%s,%s,%s,%s\n'
-                             % (height,
-                                format8(poolCoinTotal),
-                                format8(v),
-                                format8(assignedStakeBonus),
-                                format16(addrReward),
-                                format16(addrTotal)))
+                with open(os.path.join(self.debugDir, k + ".csv"), "a") as fp:
+                    fp.write(
+                        "%d,%s,%s,%s,%s,%s\n"
+                        % (
+                            height,
+                            format8(poolCoinTotal),
+                            format8(v),
+                            format8(assignedStakeBonus),
+                            format16(addrReward),
+                            format16(addrTotal),
+                        )
+                    )
 
         if stakeBonus > 0:  # An output < minOutputValue may have staked
             if self.debug:
-                logmt(self.fp, 'Unassigned stake bonus: %s %s\n' % (reward['kernelscript']['spendaddr'], format8(stakeBonus)))
+                logmt(
+                    self.fp,
+                    "Unassigned stake bonus: %s %s\n"
+                    % (reward["kernelscript"]["spendaddr"], format8(stakeBonus)),
+                )
 
         poolRewardTotal = int(poolReward + stakeBonus)
         dbkey = bytes([DBT_POOL_BAL]) + decodeAddress(self.poolAddrReward)
         n = db.get(dbkey)
         if n is not None:
-            poolRewardTotal += int.from_bytes(n, 'big')
-        b.put(dbkey, poolRewardTotal.to_bytes(8, 'big'))
+            poolRewardTotal += int.from_bytes(n, "big")
+        b.put(dbkey, poolRewardTotal.to_bytes(8, "big"))
 
         if self.debug:
             blockOutput = 0
-            for out in reward['outputs']:
-                blockOutput += int(decimal.Decimal(out['value']) * COIN)
-            with open(os.path.join(self.debugDir, 'pool.csv'), 'a') as fp:
-                fp.write('%d,%s,%s,%s,%s,%s\n'
-                         % (height,
-                            format8(blockReward),
-                            format8(blockOutput),
-                            format8(poolReward),
-                            format8(poolRewardTotal),
-                            format8(poolCoinTotal)))
+            for out in reward["outputs"]:
+                blockOutput += int(decimal.Decimal(out["value"]) * COIN)
+            with open(os.path.join(self.debugDir, "pool.csv"), "a") as fp:
+                fp.write(
+                    "%d,%s,%s,%s,%s,%s\n"
+                    % (
+                        height,
+                        format8(blockReward),
+                        format8(blockOutput),
+                        format8(poolReward),
+                        format8(poolRewardTotal),
+                        format8(poolCoinTotal),
+                    )
+                )
 
     def processPayments(self, height, db, b):
-        logmt(self.fp, 'processPayments height: %d\n' % (height))
+        logmt(self.fp, "processPayments height: %d\n" % (height))
 
-        b.put(bytes([DBT_DATA]) + b'last_payment_run', struct.pack('>i', height))
+        b.put(bytes([DBT_DATA]) + b"last_payment_run", struct.pack(">i", height))
 
         totalDisbursed = 0
         txns = []
         outputs = []
         for key, value in db.iterator(prefix=bytes([DBT_BAL])):
-            addrAccumulated = int.from_bytes(value[:16], 'big')
+            addrAccumulated = int.from_bytes(value[:16], "big")
 
             if (addrAccumulated // COIN) < self.payoutThreshold:
                 continue
 
-            addrPending = int.from_bytes(value[16:24], 'big')
-            addrPaidout = int.from_bytes(value[24:32], 'big')
+            addrPending = int.from_bytes(value[16:24], "big")
+            addrPaidout = int.from_bytes(value[24:32], "big")
             address = encodeAddress(key[1:])
 
             payout = addrAccumulated // COIN
             totalDisbursed += payout
             addrAccumulated -= payout * COIN
 
-            outputs.append({'address': address, 'amount': format8(payout)})
+            outputs.append({"address": address, "amount": format8(payout)})
             addrPending += payout
 
-            b.put(key, addrAccumulated.to_bytes(16, 'big') + addrPending.to_bytes(8, 'big') + addrPaidout.to_bytes(8, 'big') + value[32:])
+            b.put(
+                key,
+                addrAccumulated.to_bytes(16, "big")
+                + addrPending.to_bytes(8, "big")
+                + addrPaidout.to_bytes(8, "big")
+                + value[32:],
+            )
 
         if len(outputs) < 1:
             return
 
-        if self.mode != 'master':
+        if self.mode != "master":
             return
 
         # Safety check to prevent double paying if resyncing the chain in master mode
-        ro = callrpc(self.rpc_port, self.rpc_auth, 'getblockchaininfo')
-        if ro['blocks'] >= self.poolHeight + self.blockBuffer + 5:
-            logmt(self.fp, 'Warning: Pool height is below node height, skipping disbursement, %d, %d.\n' % (self.poolHeight, ro['blocks']))
+        ro = callrpc(self.rpc_port, self.rpc_auth, "getblockchaininfo")
+        if ro["blocks"] >= self.poolHeight + self.blockBuffer + 5:
+            logmt(
+                self.fp,
+                "Warning: Pool height is below node height, skipping disbursement, %d, %d.\n"
+                % (self.poolHeight, ro["blocks"]),
+            )
             return
 
         txfees = 0
         for i in range(0, len(outputs), self.maxOutputsPerTx):
-            sl = outputs[i:i + self.maxOutputsPerTx]
+            sl = outputs[i : i + self.maxOutputsPerTx]
 
             totalDisbursedInTx = 0
             for o in sl:
-                totalDisbursedInTx += int(decimal.Decimal(o['amount']) * COIN)
+                totalDisbursedInTx += int(decimal.Decimal(o["amount"]) * COIN)
             # Send change back to the pool reward address for easier tracking by observers
-            opts = {
-                'show_fee': True,
-                'changeaddress': self.poolAddrReward
-            }
+            opts = {"show_fee": True, "changeaddress": self.poolAddrReward}
 
             if self.tx_fee_per_kb is not None:
-                opts['feeRate'] = self.tx_fee_per_kb
+                opts["feeRate"] = self.tx_fee_per_kb
 
-            ro = callrpc(self.rpc_port, self.rpc_auth, 'sendtypeto',
-                         ['ghost', 'ghost', sl, '', '', 4, 64, False, opts], 'pool_reward')
+            ro = callrpc(
+                self.rpc_port,
+                self.rpc_auth,
+                "sendtypeto",
+                ["ghost", "ghost", sl, "", "", 4, 64, False, opts],
+                "pool_reward",
+            )
 
-            txfees += int(decimal.Decimal(ro['fee']) * COIN)
-            txns.append(ro['txid'])
+            txfees += int(decimal.Decimal(ro["fee"]) * COIN)
+            txns.append(ro["txid"])
 
-            b.put(bytes([DBT_POOL_PENDING_PAYOUT]) + bytes.fromhex(ro['txid']), totalDisbursedInTx.to_bytes(8, 'big') + txfees.to_bytes(8, 'big'))
+            b.put(
+                bytes([DBT_POOL_PENDING_PAYOUT]) + bytes.fromhex(ro["txid"]),
+                totalDisbursedInTx.to_bytes(8, "big") + txfees.to_bytes(8, "big"),
+            )
 
             if self.debug:
                 for o in sl:
-                    with open(os.path.join(self.debugDir, o['address'] + '.csv'), 'a') as fp:
-                        fp.write('%d,%s,%s,%s,%s,%s,%s,%s\n'
-                                 % (height,
-                                    '',
-                                    '',
-                                    '',
-                                    '',
-                                    format16(addrAccumulated),
-                                    o['amount'],
-                                    ro['txid'],
-                                    ))
+                    with open(
+                        os.path.join(self.debugDir, o["address"] + ".csv"), "a"
+                    ) as fp:
+                        fp.write(
+                            "%d,%s,%s,%s,%s,%s,%s,%s\n"
+                            % (
+                                height,
+                                "",
+                                "",
+                                "",
+                                "",
+                                format16(addrAccumulated),
+                                o["amount"],
+                                ro["txid"],
+                            )
+                        )
 
-        dbkey = bytes([DBT_DATA]) + b'pool_fees'
+        dbkey = bytes([DBT_DATA]) + b"pool_fees"
         n = db.get(dbkey)
-        totalPoolFees = txfees if n is None else txfees + int.from_bytes(n, 'big')
-        b.put(dbkey, totalPoolFees.to_bytes(8, 'big'))
+        totalPoolFees = txfees if n is None else txfees + int.from_bytes(n, "big")
+        b.put(dbkey, totalPoolFees.to_bytes(8, "big"))
 
         if self.debug:
-            with open(os.path.join(self.debugDir, 'pool.csv'), 'a') as fp:
-                fp.write('%d,%s,%s,%s,%s,%s,%s,%s,%s\n'
-                         % (height,
-                            '',
-                            '',
-                            '',
-                            '',
-                            format8(totalDisbursed),
-                            format8(txfees),
-                            format8(totalPoolFees),
-                            '|'.join(txns)
-                            ))
+            with open(os.path.join(self.debugDir, "pool.csv"), "a") as fp:
+                fp.write(
+                    "%d,%s,%s,%s,%s,%s,%s,%s,%s\n"
+                    % (
+                        height,
+                        "",
+                        "",
+                        "",
+                        "",
+                        format8(totalDisbursed),
+                        format8(txfees),
+                        format8(totalPoolFees),
+                        "|".join(txns),
+                    )
+                )
 
     def findPayments(self, height, coinstakeid, db, b, batchBalances):
         # logm(self.fp, 'findPayments')
         opts = {
-            'addresses': [self.poolAddrReward],
-            'start': height,
-            'end': height,
+            "addresses": [self.poolAddrReward],
+            "start": height,
+            "end": height,
         }
-        ro = callrpc(self.rpc_port, self.rpc_auth, 'getaddressdeltas', [opts, ])
+        ro = callrpc(
+            self.rpc_port,
+            self.rpc_auth,
+            "getaddressdeltas",
+            [
+                opts,
+            ],
+        )
 
         txids = set()
         for delta in ro:
-            if delta['txid'] == coinstakeid:
-                if delta['satoshis'] < 0:
-                    logmt(self.fp, 'WARNING: Pool reward coin spent in coinstake %s\n' % (coinstakeid))
+            if delta["txid"] == coinstakeid:
+                if delta["satoshis"] < 0:
+                    logmt(
+                        self.fp,
+                        "WARNING: Pool reward coin spent in coinstake %s\n"
+                        % (coinstakeid),
+                    )
                 continue
-            txids.add(delta['txid'])
+            txids.add(delta["txid"])
 
         if len(txids) < 1:
             return
 
         for txid in txids:
-            ro = callrpc(self.rpc_port, self.rpc_auth, 'getrawtransaction', [txid, True])
+            ro = callrpc(
+                self.rpc_port, self.rpc_auth, "getrawtransaction", [txid, True]
+            )
 
             have_blinded = False
             total_input_value = 0
             total_output_value = 0
-            for n, inp in enumerate(ro['vin']):
+            for n, inp in enumerate(ro["vin"]):
                 try:
-                    ri = callrpc(self.rpc_port, self.rpc_auth, 'getrawtransaction', [inp['txid'], True])
-                    prevout = ri['vout'][inp['vout']]
-                    if prevout['type'] == 'blind':
+                    ri = callrpc(
+                        self.rpc_port,
+                        self.rpc_auth,
+                        "getrawtransaction",
+                        [inp["txid"], True],
+                    )
+                    prevout = ri["vout"][inp["vout"]]
+                    if prevout["type"] == "blind":
                         have_blinded = True
                     else:
-                        total_input_value += int(decimal.Decimal(prevout['value']) * COIN)
+                        total_input_value += int(
+                            decimal.Decimal(prevout["value"]) * COIN
+                        )
                 except Exception:
-                    logmt(self.fp, 'WARNING: Could not get prevout value input %s.%d.\n' % (txid, n))
+                    logmt(
+                        self.fp,
+                        "WARNING: Could not get prevout value input %s.%d.\n"
+                        % (txid, n),
+                    )
 
             totalDisbursed = 0
-            for out in ro['vout']:
+            for out in ro["vout"]:
                 try:
-                    if out['type'] == 'data':
+                    if out["type"] == "data":
                         continue
-                    if out['type'] == 'blind':
-                        logmt(self.fp, 'WARNING: Found txn %s paying to blinded output.\n' % (txid))
+                    if out["type"] == "blind":
+                        logmt(
+                            self.fp,
+                            "WARNING: Found txn %s paying to blinded output.\n"
+                            % (txid),
+                        )
                         have_blinded = True
                         continue
-                    if out['type'] == 'anon':
-                        logmt(self.fp, 'WARNING: Found txn %s paying to anon output.\n' % (txid))
+                    if out["type"] == "anon":
+                        logmt(
+                            self.fp,
+                            "WARNING: Found txn %s paying to anon output.\n" % (txid),
+                        )
                         have_blinded = True
                         continue
                 except Exception:
-                    logmt(self.fp, 'WARNING: Found txn %s paying to unknown output type.\n' % (txid))
+                    logmt(
+                        self.fp,
+                        "WARNING: Found txn %s paying to unknown output type.\n"
+                        % (txid),
+                    )
                     continue
 
-                v = int(decimal.Decimal(out['value']) * COIN)
+                v = int(decimal.Decimal(out["value"]) * COIN)
                 total_output_value += v
 
                 address = None
                 try:
-                    address = out['scriptPubKey']['addresses'][0]
+                    address = out["scriptPubKey"]["addresses"][0]
                 except Exception:
-                    logmt(self.fp, 'WARNING: Found txn %s paying to unknown address.\n' % (txid))
+                    logmt(
+                        self.fp,
+                        "WARNING: Found txn %s paying to unknown address.\n" % (txid),
+                    )
                     continue
 
                 if address == self.poolAddrReward:
@@ -687,69 +910,127 @@ class StakePool():
                 dbkey = bytes([DBT_BAL]) + decodeAddress(address)
                 n = self.getBatched(dbkey, db, batchBalances)
                 if n is None:
-                    logmt(self.fp, 'Withdrawal detected from pool reward balance %s %d %s.\n' % (txid, out['n'], format8(v)))
+                    logmt(
+                        self.fp,
+                        "Withdrawal detected from pool reward balance %s %d %s.\n"
+                        % (txid, out["n"], format8(v)),
+                    )
 
-                    dbkey = bytes([DBT_DATA]) + b'pool_withdrawn'
+                    dbkey = bytes([DBT_DATA]) + b"pool_withdrawn"
                     n = db.get(dbkey)
-                    poolWithdrawnTotal = v if n is None else v + int.from_bytes(n, 'big')
-                    b.put(dbkey, poolWithdrawnTotal.to_bytes(8, 'big'))
+                    poolWithdrawnTotal = (
+                        v if n is None else v + int.from_bytes(n, "big")
+                    )
+                    b.put(dbkey, poolWithdrawnTotal.to_bytes(8, "big"))
 
                     if self.debug:
-                        with open(os.path.join(self.debugDir, 'pool_withdrawals.csv'), 'a') as fp:
-                            fp.write('%d,%s,%d,%s,%s\n'
-                                     % (height, txid, out['n'], address, format8(v)))
+                        with open(
+                            os.path.join(self.debugDir, "pool_withdrawals.csv"), "a"
+                        ) as fp:
+                            fp.write(
+                                "%d,%s,%d,%s,%s\n"
+                                % (height, txid, out["n"], address, format8(v))
+                            )
                     continue
 
-                addrReward = int.from_bytes(n[:16], 'big')
-                addrPending = int.from_bytes(n[16:24], 'big')
-                addrPaidout = int.from_bytes(n[24:32], 'big')
+                addrReward = int.from_bytes(n[:16], "big")
+                addrPending = int.from_bytes(n[16:24], "big")
+                addrPaidout = int.from_bytes(n[24:32], "big")
                 addrPending -= v
                 addrPaidout += v
                 totalDisbursed += v
                 if addrPending < 0:
-                    logmt(self.fp, 'WARNING: txn %s overpays address %s more than pending payout, pending: %d, paid: %d.\n' % (txid, address, addrPending + v, v), True, True)
+                    logmt(
+                        self.fp,
+                        "WARNING: txn %s overpays address %s more than pending payout, pending: %d, paid: %d.\n"
+                        % (txid, address, addrPending + v, v),
+                        True,
+                        True,
+                    )
                     if addrReward + (addrPending * COIN) < 0:
-                        logmt(self.fp, 'WARNING: txn %s overpays address %s more than accumulated reward %d, paid: %d.\n' % (txid, address, addrPending + v, v), True, True)
+                        logmt(
+                            self.fp,
+                            "WARNING: txn %s overpays address %s more than accumulated reward %d, paid: %d.\n"
+                            % (txid, address, addrPending + v, v),
+                            True,
+                            True,
+                        )
                     else:
                         # Reduce accumulated reward by amount overpaid
                         addrReward += addrPending * COIN
                     addrPending = 0
 
-                self.setBatched(dbkey, addrReward.to_bytes(16, 'big') + addrPending.to_bytes(8, 'big') + addrPaidout.to_bytes(8, 'big') + n[32:], b, batchBalances)
+                self.setBatched(
+                    dbkey,
+                    addrReward.to_bytes(16, "big")
+                    + addrPending.to_bytes(8, "big")
+                    + addrPaidout.to_bytes(8, "big")
+                    + n[32:],
+                    b,
+                    batchBalances,
+                )
 
                 if self.debug:
-                    logmt(self.fp, 'Payout to %s: %s %d %s.\n' % (address, txid, out['n'], format8(v)))
+                    logmt(
+                        self.fp,
+                        "Payout to %s: %s %d %s.\n"
+                        % (address, txid, out["n"], format8(v)),
+                    )
 
             if totalDisbursed > 0:
-                b.put(bytes([DBT_POOL_PAYOUT]) + struct.pack('>i', height) + bytes.fromhex(txid), totalDisbursed.to_bytes(8, 'big'))
+                b.put(
+                    bytes([DBT_POOL_PAYOUT])
+                    + struct.pack(">i", height)
+                    + bytes.fromhex(txid),
+                    totalDisbursed.to_bytes(8, "big"),
+                )
                 b.delete(bytes([DBT_POOL_PENDING_PAYOUT]) + bytes.fromhex(txid))
 
-                dbkey = bytes([DBT_DATA]) + b'pool_disbursed'
+                dbkey = bytes([DBT_DATA]) + b"pool_disbursed"
                 n = self.getBatched(dbkey, db, batchBalances)
-                pool_disbursed = totalDisbursed if n is None else totalDisbursed + int.from_bytes(n, 'big')
-                self.setBatched(dbkey, pool_disbursed.to_bytes(8, 'big'), b, batchBalances)
+                pool_disbursed = (
+                    totalDisbursed
+                    if n is None
+                    else totalDisbursed + int.from_bytes(n, "big")
+                )
+                self.setBatched(
+                    dbkey, pool_disbursed.to_bytes(8, "big"), b, batchBalances
+                )
 
-                date = dt.datetime.fromtimestamp(int(ro['blocktime'])).strftime('%Y-%m')
-                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, 'UTF-8')
+                date = dt.datetime.fromtimestamp(int(ro["blocktime"])).strftime("%Y-%m")
+                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, "UTF-8")
                 m = self.getBatched(dbkey, db, batchBalances)
                 if m is not None:
                     month_metrics = unpackMonthMetrics(m)
                     month_metrics[2] += totalDisbursed
-                    self.setBatched(dbkey, packMonthMetrics(month_metrics), b, batchBalances)
+                    self.setBatched(
+                        dbkey, packMonthMetrics(month_metrics), b, batchBalances
+                    )
 
             try:
                 if have_blinded:
-                    fee = ro['vout'][0]['ct_fee']
+                    fee = ro["vout"][0]["ct_fee"]
                 else:
                     fee = total_input_value - total_output_value
 
                 if self.debug:
-                    logmt(self.fp, 'Payout tx %s, input %s, output %s, fee %s.\n' % (txid, format8(total_input_value), format8(total_output_value), format8(fee)))
+                    logmt(
+                        self.fp,
+                        "Payout tx %s, input %s, output %s, fee %s.\n"
+                        % (
+                            txid,
+                            format8(total_input_value),
+                            format8(total_output_value),
+                            format8(fee),
+                        ),
+                    )
 
-                dbkey = bytes([DBT_DATA]) + b'pool_fees_detected'
+                dbkey = bytes([DBT_DATA]) + b"pool_fees_detected"
                 n = self.getBatched(dbkey, db, batchBalances)
-                total_pool_fees = fee if n is None else fee + int.from_bytes(n, 'big')
-                self.setBatched(dbkey, total_pool_fees.to_bytes(8, 'big'), b, batchBalances)
+                total_pool_fees = fee if n is None else fee + int.from_bytes(n, "big")
+                self.setBatched(
+                    dbkey, total_pool_fees.to_bytes(8, "big"), b, batchBalances
+                )
             except Exception:
                 exc_type, exc_value, exc_tb = sys.exc_info()
                 traceback.print_exception(exc_type, exc_value, exc_tb)
@@ -757,68 +1038,105 @@ class StakePool():
                 self.fp.flush()
 
     def processPoolRewardWithdrawal(self, height, db, b):
-        logmt(self.fp, 'processPoolRewardWithdrawal height: %d\n' % (height))
+        logmt(self.fp, "processPoolRewardWithdrawal height: %d\n" % (height))
 
-        b.put(bytes([DBT_DATA]) + b'last_withdrawal_run', struct.pack('>i', height))
+        b.put(bytes([DBT_DATA]) + b"last_withdrawal_run", struct.pack(">i", height))
 
-        r = callrpc(self.rpc_port, self.rpc_auth, 'getwalletinfo', [], 'pool_reward')
+        r = callrpc(self.rpc_port, self.rpc_auth, "getwalletinfo", [], "pool_reward")
 
         n = db.get(bytes([DBT_POOL_BAL]) + decodeAddress(self.poolAddrReward))
-        pool_reward = 0 if n is None else int.from_bytes(n, 'big')
+        pool_reward = 0 if n is None else int.from_bytes(n, "big")
 
-        n = db.get(bytes([DBT_DATA]) + b'pool_fees')
-        poolfees = 0 if n is None else int.from_bytes(n, 'big')
+        n = db.get(bytes([DBT_DATA]) + b"pool_fees")
+        poolfees = 0 if n is None else int.from_bytes(n, "big")
 
-        n = db.get(bytes([DBT_DATA]) + b'pool_withdrawn')
-        pool_reward_withdrawn = 0 if n is None else int.from_bytes(n, 'big')
-        pool_reward_bal = float(decimal.Decimal((pool_reward - (poolfees + pool_reward_withdrawn)) / COIN))
+        n = db.get(bytes([DBT_DATA]) + b"pool_withdrawn")
+        pool_reward_withdrawn = 0 if n is None else int.from_bytes(n, "big")
+        pool_reward_bal = float(
+            decimal.Decimal((pool_reward - (poolfees + pool_reward_withdrawn)) / COIN)
+        )
 
-        reserve = self.settings['poolownerwithdrawal']['reserve']
-        threshold = self.settings['poolownerwithdrawal']['threshold']
+        reserve = self.settings["poolownerwithdrawal"]["reserve"]
+        threshold = self.settings["poolownerwithdrawal"]["threshold"]
 
         if self.debug:
-            logm(self.fp, 'Balance %f, reserve %f, threshold %f\npool_reward %s, poolfees %s, pool_reward_withdrawn %s, pool_reward_bal %f' %
-                          (r['balance'], reserve, threshold, format8(decimal.Decimal(pool_reward)), format8(decimal.Decimal(poolfees)), format8(decimal.Decimal(pool_reward_withdrawn)), pool_reward_bal))
+            logm(
+                self.fp,
+                "Balance %f, reserve %f, threshold %f\npool_reward %s, poolfees %s, pool_reward_withdrawn %s, pool_reward_bal %f"
+                % (
+                    r["balance"],
+                    reserve,
+                    threshold,
+                    format8(decimal.Decimal(pool_reward)),
+                    format8(decimal.Decimal(poolfees)),
+                    format8(decimal.Decimal(pool_reward_withdrawn)),
+                    pool_reward_bal,
+                ),
+            )
 
-        if r['balance'] <= reserve or pool_reward_bal < reserve + threshold:
+        if r["balance"] <= reserve or pool_reward_bal < reserve + threshold:
             return
 
-        ro = callrpc(self.rpc_port, self.rpc_auth, 'getblockchaininfo')
-        if ro['blocks'] >= self.poolHeight + self.blockBuffer + 5:
-            logmt(self.fp, 'Warning: Pool height is below node height, skipping withdrawal, %d, %d.\n' % (self.poolHeight, ro['blocks']))
+        ro = callrpc(self.rpc_port, self.rpc_auth, "getblockchaininfo")
+        if ro["blocks"] >= self.poolHeight + self.blockBuffer + 5:
+            logmt(
+                self.fp,
+                "Warning: Pool height is below node height, skipping withdrawal, %d, %d.\n"
+                % (self.poolHeight, ro["blocks"]),
+            )
             return
 
         try:
             withdraw_amount = format8(decimal.Decimal(pool_reward_bal - reserve) * COIN)
 
             # Send change back to the pool reward address for easier tracking by observers
-            opts = {
-                'show_fee': True,
-                'changeaddress': self.poolAddrReward
-            }
+            opts = {"show_fee": True, "changeaddress": self.poolAddrReward}
 
             if self.tx_fee_per_kb is not None:
-                opts['feeRate'] = self.tx_fee_per_kb
+                opts["feeRate"] = self.tx_fee_per_kb
 
-            outputs = [{'address': self.owner_withdrawal_addr, 'amount': withdraw_amount}]
-            ro = callrpc(self.rpc_port, self.rpc_auth, 'sendtypeto',
-                         ['ghost', 'ghost', outputs, '', '', 4, 64, False, opts], 'pool_reward')
+            outputs = [
+                {"address": self.owner_withdrawal_addr, "amount": withdraw_amount}
+            ]
+            ro = callrpc(
+                self.rpc_port,
+                self.rpc_auth,
+                "sendtypeto",
+                ["ghost", "ghost", outputs, "", "", 4, 64, False, opts],
+                "pool_reward",
+            )
 
-            txfee = int(decimal.Decimal(ro['fee']) * COIN)
-            logmt(self.fp, 'Withdrawing %s to %s in tx: %s\n' % (withdraw_amount, self.owner_withdrawal_addr, ro['txid']))
+            txfee = int(decimal.Decimal(ro["fee"]) * COIN)
+            logmt(
+                self.fp,
+                "Withdrawing %s to %s in tx: %s\n"
+                % (withdraw_amount, self.owner_withdrawal_addr, ro["txid"]),
+            )
 
-            dbkey = bytes([DBT_DATA]) + b'pool_fees'
+            dbkey = bytes([DBT_DATA]) + b"pool_fees"
             n = db.get(dbkey)
-            totalPoolFees = txfee if n is None else txfee + int.from_bytes(n, 'big')
-            b.put(dbkey, totalPoolFees.to_bytes(8, 'big'))
+            totalPoolFees = txfee if n is None else txfee + int.from_bytes(n, "big")
+            b.put(dbkey, totalPoolFees.to_bytes(8, "big"))
 
             if self.debug:
-                with open(os.path.join(self.debugDir, 'pool_withdrawals.csv'), 'a') as fp:
-                    fp.write('%d,%s,%d,%s,%s\n'
-                             % (height, ro['txid'], -1, self.owner_withdrawal_addr, withdraw_amount))
+                with open(
+                    os.path.join(self.debugDir, "pool_withdrawals.csv"), "a"
+                ) as fp:
+                    fp.write(
+                        "%d,%s,%d,%s,%s\n"
+                        % (
+                            height,
+                            ro["txid"],
+                            -1,
+                            self.owner_withdrawal_addr,
+                            withdraw_amount,
+                        )
+                    )
 
-                r = callrpc(self.rpc_port, self.rpc_auth, 'getwalletinfo', [], 'pool_reward')
-                logm(self.fp, 'Available balance after withdrawal %f' % (r['balance']))
+                r = callrpc(
+                    self.rpc_port, self.rpc_auth, "getwalletinfo", [], "pool_reward"
+                )
+                logm(self.fp, "Available balance after withdrawal %f" % (r["balance"]))
 
         except Exception:
             exc_type, exc_value, exc_tb = sys.exc_info()
@@ -829,11 +1147,13 @@ class StakePool():
     def checkBlocks(self, limit_blocks=-1):
         try:
             message = self.zmqSubscriber.recv(flags=zmq.NOBLOCK)
-            if message == b'hashblock':
+            if message == b"hashblock":
                 message = self.zmqSubscriber.recv()
                 seq = self.zmqSubscriber.recv()
-                r = callrpc(self.rpc_port, self.rpc_auth, 'getblockchaininfo')
-                while r['blocks'] - self.blockBuffer > self.poolHeight and self.is_running:
+                r = callrpc(self.rpc_port, self.rpc_auth, "getblockchaininfo")
+                while (
+                    r["blocks"] - self.blockBuffer > self.poolHeight and self.is_running
+                ):
                     self.processBlock(self.poolHeight + 1)
                     if limit_blocks < 0:
                         continue
@@ -855,28 +1175,41 @@ class StakePool():
         # TODO: bech32 decode and test chain
         address = decodeAddress(address_str)
         if address is None or len(address) != 33:
-            raise ValueError('Invalid address')
+            raise ValueError("Invalid address")
 
         db = plyvel.DB(self.dbPath)
 
         dbkey = bytes([DBT_BAL]) + address
         n = db.get(dbkey)
         if n is not None:
-            rv['accumulated'] = int.from_bytes(n[:16], 'big')
-            rv['rewardpending'] = int.from_bytes(n[16:24], 'big')
-            rv['rewardpaidout'] = int.from_bytes(n[24:32], 'big')
-            rv['laststaking'] = int.from_bytes(n[32:40], 'big')
+            rv["accumulated"] = int.from_bytes(n[:16], "big")
+            rv["rewardpending"] = int.from_bytes(n[16:24], "big")
+            rv["rewardpaidout"] = int.from_bytes(n[24:32], "big")
+            rv["laststaking"] = int.from_bytes(n[32:40], "big")
             # TODO: get total staking from csindex?
 
         db.close()
 
-        utxos = callrpc(self.rpc_port, self.rpc_auth, 'listunspent',
-                        [1, 9999999, [address_str, ], True, {'include_immature': True}], 'pool_stake')
+        utxos = callrpc(
+            self.rpc_port,
+            self.rpc_auth,
+            "listunspent",
+            [
+                1,
+                9999999,
+                [
+                    address_str,
+                ],
+                True,
+                {"include_immature": True},
+            ],
+            "pool_stake",
+        )
 
         totalCoinCurrent = 0
         for utxo in utxos:
-            totalCoinCurrent += int(decimal.Decimal(utxo['amount']) * COIN)
-        rv['currenttotal'] = totalCoinCurrent
+            totalCoinCurrent += int(decimal.Decimal(utxo["amount"]) * COIN)
+        rv["currenttotal"] = totalCoinCurrent
 
         return rv
 
@@ -896,38 +1229,46 @@ class StakePool():
                 # TODO: bech32 decode and test chain
                 address = decodeAddress(addr)
                 if address is None or len(address) != 33:
-                    raise ValueError('Invalid address')
+                    raise ValueError("Invalid address")
 
                 dbkey = bytes([DBT_BAL]) + address
                 n = db.get(dbkey)
                 if n is not None:
-                    rv['address'] = addr
-                    rv['accumulated'] = int.from_bytes(n[:16], 'big') / COIN
-                    rv['rewardpending'] = int.from_bytes(n[16:24], 'big') / COIN
-                    rv['rewardpaidout'] = int.from_bytes(n[24:32], 'big') / COIN
-                    rv['laststaking'] = int.from_bytes(n[32:40], 'big') / COIN
-                shouldadd = rv['laststaking'] > 0
+                    rv["address"] = addr
+                    rv["accumulated"] = int.from_bytes(n[:16], "big") / COIN
+                    rv["rewardpending"] = int.from_bytes(n[16:24], "big") / COIN
+                    rv["rewardpaidout"] = int.from_bytes(n[24:32], "big") / COIN
+                    rv["laststaking"] = int.from_bytes(n[32:40], "big") / COIN
+                shouldadd = rv["laststaking"] > 0
                 if shouldadd:
-                    utxos = callrpc(self.rpc_port, self.rpc_auth, 'getaddressutxos',
-                                    [{"addresses": [addr]}], 'pool_stake')
+                    utxos = callrpc(
+                        self.rpc_port,
+                        self.rpc_auth,
+                        "getaddressutxos",
+                        [{"addresses": [addr]}],
+                        "pool_stake",
+                    )
 
                     totalCoinCurrent = 0
                     for utxo in utxos:
-                        if self.is_cs_out(utxo['script']):
-                            if unhexlify(utxo['script'])[5:-41] == self.poolAddrBytes:
-                                totalCoinCurrent += int(decimal.Decimal(utxo['satoshis'] / COIN))
-                    rv['currenttotal'] = totalCoinCurrent
+                        if self.is_cs_out(utxo["script"]):
+                            if unhexlify(utxo["script"])[5:-41] == self.poolAddrBytes:
+                                totalCoinCurrent += int(
+                                    decimal.Decimal(utxo["satoshis"] / COIN)
+                                )
+                    rv["currenttotal"] = totalCoinCurrent
                     addrdata.append(rv)
             # Finally give out data of addrs
             return addrdata
         else:
-            f = open(self.addrDirPath + '/rewarddata.json',)
+            f = open(
+                self.addrDirPath + "/rewarddata.json",
+            )
             data = json.load(f)
             return data
 
     @getDBMutex
     def rebuildMetrics(self):
-
         # Remove old metrics cache records
         db = plyvel.DB(self.dbPath)
         it = db.iterator(prefix=bytes([DBT_POOL_METRICS]))
@@ -944,12 +1285,21 @@ class StakePool():
         try:
             while True:
                 k, v = next(it)
-                foundblock = (struct.unpack('>i', k[1:])[0], v[:32].hex(), int.from_bytes(v[32:40], 'big'), int.from_bytes(v[40:48], 'big'))
+                foundblock = (
+                    struct.unpack(">i", k[1:])[0],
+                    v[:32].hex(),
+                    int.from_bytes(v[32:40], "big"),
+                    int.from_bytes(v[40:48], "big"),
+                )
 
-                blockinfo = callrpc(self.rpc_port, self.rpc_auth, 'getblockheader', [foundblock[1]])
-                date = dt.datetime.fromtimestamp(int(blockinfo['time'])).strftime('%Y-%m')
+                blockinfo = callrpc(
+                    self.rpc_port, self.rpc_auth, "getblockheader", [foundblock[1]]
+                )
+                date = dt.datetime.fromtimestamp(int(blockinfo["time"])).strftime(
+                    "%Y-%m"
+                )
 
-                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, 'UTF-8')
+                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, "UTF-8")
                 month_metrics = unpackMonthMetrics(db.get(dbkey))
                 month_metrics[0] += 1
                 month_metrics[1] += foundblock[3]
@@ -966,13 +1316,22 @@ class StakePool():
         try:
             while True:
                 k, v = next(it)
-                found_payment = (struct.unpack('>i', k[1:5])[0], int.from_bytes(v[:8], 'big'))
+                found_payment = (
+                    struct.unpack(">i", k[1:5])[0],
+                    int.from_bytes(v[:8], "big"),
+                )
 
-                blockhash = callrpc(self.rpc_port, self.rpc_auth, 'getblockhash', [found_payment[0]])
-                blockinfo = callrpc(self.rpc_port, self.rpc_auth, 'getblockheader', [blockhash])
-                date = dt.datetime.fromtimestamp(int(blockinfo['time'])).strftime('%Y-%m')
+                blockhash = callrpc(
+                    self.rpc_port, self.rpc_auth, "getblockhash", [found_payment[0]]
+                )
+                blockinfo = callrpc(
+                    self.rpc_port, self.rpc_auth, "getblockheader", [blockhash]
+                )
+                date = dt.datetime.fromtimestamp(int(blockinfo["time"])).strftime(
+                    "%Y-%m"
+                )
 
-                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, 'UTF-8')
+                dbkey = bytes([DBT_POOL_METRICS]) + bytes(date, "UTF-8")
                 month_metrics = unpackMonthMetrics(db.get(dbkey))
                 month_metrics[2] += found_payment[1]
                 db.put(dbkey, packMonthMetrics(month_metrics))
@@ -983,11 +1342,11 @@ class StakePool():
             pass
         it.close()
 
-        db.put(bytes([DBT_DATA]) + b'pool_disbursed', pool_disbursed.to_bytes(8, 'big'))
+        db.put(bytes([DBT_DATA]) + b"pool_disbursed", pool_disbursed.to_bytes(8, "big"))
 
         db.close()
 
-        return {'processedblocks': num_blocks, 'processedpayments': num_payments}
+        return {"processedblocks": num_blocks, "processedpayments": num_payments}
 
     @getDBMutex
     def getMetrics(self):
@@ -998,7 +1357,9 @@ class StakePool():
             for i in range(12):
                 k, v = next(it)
                 data = unpackMonthMetrics(v)
-                month_metrics.append([k[1:].decode('UTF-8'), data[0], data[1] // data[0], data[2]])
+                month_metrics.append(
+                    [k[1:].decode("UTF-8"), data[0], data[1] // data[0], data[2]]
+                )
         except Exception:
             pass
         it.close()
@@ -1010,37 +1371,47 @@ class StakePool():
     def getSummary(self, opts=None):
         rv = {}
 
-        rv['poolmode'] = self.mode
+        rv["poolmode"] = self.mode
 
         db = plyvel.DB(self.dbPath)
 
-        n = db.get(bytes([DBT_DATA]) + b'current_height')
-        rv['poolheight'] = 0 if n is None else struct.unpack('>i', n)[0]
+        n = db.get(bytes([DBT_DATA]) + b"current_height")
+        rv["poolheight"] = 0 if n is None else struct.unpack(">i", n)[0]
 
-        n = db.get(bytes([DBT_DATA]) + b'blocks_found')
-        rv['blocksfound'] = 0 if n is None else struct.unpack('>i', n)[0]
+        n = db.get(bytes([DBT_DATA]) + b"blocks_found")
+        rv["blocksfound"] = 0 if n is None else struct.unpack(">i", n)[0]
 
-        n = db.get(bytes([DBT_DATA]) + b'pool_disbursed')
-        rv['totaldisbursed'] = 0 if n is None else int.from_bytes(n, 'big')
+        n = db.get(bytes([DBT_DATA]) + b"pool_disbursed")
+        rv["totaldisbursed"] = 0 if n is None else int.from_bytes(n, "big")
 
         n = db.get(bytes([DBT_POOL_BAL]) + decodeAddress(self.poolAddrReward))
-        rv['poolrewardtotal'] = 0 if n is None else int.from_bytes(n, 'big')
+        rv["poolrewardtotal"] = 0 if n is None else int.from_bytes(n, "big")
 
-        n = db.get(bytes([DBT_DATA]) + (b'pool_fees' if self.mode == 'master' else b'pool_fees_detected'))
-        rv['poolfeestotal'] = 0 if n is None else int.from_bytes(n, 'big')
+        n = db.get(
+            bytes([DBT_DATA])
+            + (b"pool_fees" if self.mode == "master" else b"pool_fees_detected")
+        )
+        rv["poolfeestotal"] = 0 if n is None else int.from_bytes(n, "big")
 
-        n = db.get(bytes([DBT_DATA]) + b'pool_withdrawn')
-        rv['poolwithdrawntotal'] = 0 if n is None else int.from_bytes(n, 'big')
+        n = db.get(bytes([DBT_DATA]) + b"pool_withdrawn")
+        rv["poolwithdrawntotal"] = 0 if n is None else int.from_bytes(n, "big")
 
-        n = db.get(bytes([DBT_DATA]) + b'last_payment_run')
-        rv['lastpaymentrunheight'] = 0 if n is None else struct.unpack('>i', n)[0]
+        n = db.get(bytes([DBT_DATA]) + b"last_payment_run")
+        rv["lastpaymentrunheight"] = 0 if n is None else struct.unpack(">i", n)[0]
 
         lastBlocks = []
         it = db.iterator(prefix=bytes([DBT_POOL_BLOCK]), reverse=True)
         try:
             for i in range(5):
                 k, v = next(it)
-                lastBlocks.append((struct.unpack('>i', k[1:])[0], v[:32].hex(), int.from_bytes(v[32:40], 'big'), int.from_bytes(v[40:48], 'big')))
+                lastBlocks.append(
+                    (
+                        struct.unpack(">i", k[1:])[0],
+                        v[:32].hex(),
+                        int.from_bytes(v[32:40], "big"),
+                        int.from_bytes(v[40:48], "big"),
+                    )
+                )
         except Exception:
             pass
         it.close()
@@ -1050,7 +1421,13 @@ class StakePool():
         try:
             for i in range(5):
                 k, v = next(it)
-                pendingPayments.append((k[1:].hex(), int.from_bytes(v[:8], 'big'), int.from_bytes(v[8:16], 'big')))
+                pendingPayments.append(
+                    (
+                        k[1:].hex(),
+                        int.from_bytes(v[:8], "big"),
+                        int.from_bytes(v[8:16], "big"),
+                    )
+                )
         except Exception:
             pass
         it.close()
@@ -1060,36 +1437,48 @@ class StakePool():
         try:
             for i in range(5):
                 k, v = next(it)
-                lastPayments.append((struct.unpack('>i', k[1:5])[0], k[5:38].hex(), int.from_bytes(v[:8], 'big')))
+                lastPayments.append(
+                    (
+                        struct.unpack(">i", k[1:5])[0],
+                        k[5:38].hex(),
+                        int.from_bytes(v[:8], "big"),
+                    )
+                )
         except Exception:
             pass
         it.close()
         db.close()
 
-        rv['lastblocks'] = lastBlocks
-        rv['pendingpayments'] = pendingPayments
-        rv['lastpayments'] = lastPayments
+        rv["lastblocks"] = lastBlocks
+        rv["pendingpayments"] = pendingPayments
+        rv["lastpayments"] = lastPayments
 
         try:
-            stakinginfo = callrpc(self.rpc_port, self.rpc_auth, 'getstakinginfo', [], 'pool_stake')
-            rv['stakeweight'] = stakinginfo['weight']
+            stakinginfo = callrpc(
+                self.rpc_port, self.rpc_auth, "getstakinginfo", [], "pool_stake"
+            )
+            rv["stakeweight"] = stakinginfo["weight"]
         except Exception:
-            rv['stakeweight'] = 0
+            rv["stakeweight"] = 0
 
         try:
-            walletinfo = callrpc(self.rpc_port, self.rpc_auth, 'getwalletinfo', [], 'pool_stake')
-            rv['watchonlytotalbalance'] = walletinfo['watchonly_total_balance']
-            rv['stakedbalance'] = walletinfo['watchonly_staked_balance']
+            walletinfo = callrpc(
+                self.rpc_port, self.rpc_auth, "getwalletinfo", [], "pool_stake"
+            )
+            rv["watchonlytotalbalance"] = walletinfo["watchonly_total_balance"]
+            rv["stakedbalance"] = walletinfo["watchonly_staked_balance"]
         except Exception:
-            rv['watchonlytotalbalance'] = 0
-            rv['stakedbalance'] = 0
+            rv["watchonlytotalbalance"] = 0
+            rv["stakedbalance"] = 0
 
         return rv
 
     def getVersions(self):
-        return {'pool': __version__,
-                'core': 'Unknown' if self.core_version is None else str(self.core_version)}
-    
+        return {
+            "pool": __version__,
+            "core": "Unknown" if self.core_version is None else str(self.core_version),
+        }
+
     def is_cs_out(self, scriptPubKey):
         script_hex = unhexlify(scriptPubKey)
 
