@@ -4,7 +4,7 @@ import io
 
 __version__ = re.search(
     r'__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
-    io.open('coldstakepool/__init__.py', encoding='utf_8_sig').read()
+    io.open("coldstakepool/__init__.py", encoding="utf_8_sig").read(),
 ).group(1)
 
 setuptools.setup(
@@ -31,8 +31,8 @@ setuptools.setup(
         "console_scripts": [
             "coldstakepool-prepare=bin.coldstakepool_prepare:main",
             "coldstakepool-run=bin.coldstakepool_run:main",
+            "coldstakepool-rewind=bin.coldstakepool_rewind:main",
         ]
     },
-    test_suite="tests.coldstakepool.test_suite"
-
+    test_suite="tests.coldstakepool.test_suite",
 )
